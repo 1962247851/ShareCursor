@@ -1,0 +1,90 @@
+name: Build artifacts
+
+# CI counterpart of release.yml: build the macOS .dmg and Windows .exe
+# installer on every push / PR that touches code or packaging (and on demand),
+# and expose them as downloadable workflow artifacts — no tag or release
+# needed, so any branch can be smoke-tested end-to-end.
+on:
+  push:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "packaging/**"
+      - ".github/workflows/build-artifacts.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "packaging/**"
+      - ".github/workflows/build-artifacts.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: build-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: Resolve build version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Read workspace version from Cargo.toml
+        run: |
+          VERSION=$(sed -n '/^\[workspace\.package\]/,/^\[/p' Cargo.toml | grep -m1 '^version' | cut -d'"' -f2)
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::could not read workspace version from Cargo.toml"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "building ShareCursor $VERSION"
+
+  macos:
+    name: macOS (.dmg, universal)
+    needs: resolve
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build ShareCursor.app + .dmg
+        run: bash packaging/macos/build-app.sh "${{ needs.resolve.outputs.version }}"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  windows:
+    name: Windows (.exe installer)
+    needs: resolve
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release --features tray,gui
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $version = "${{ needs.resolve.outputs.version }}"
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DMyAppVersion=$version" packaging\windows\sharecursor.iss
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: packaging/windows/Output/*.exe
+          if-no-files-found: error
