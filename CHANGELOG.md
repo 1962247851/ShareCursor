@@ -7,6 +7,20 @@ All notable changes to ShareCursor are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-24
+
+### Fixed
+- **Mouse freezing at screen edges** — the edge hand-off guard is now enforced
+  in the live capture path: a crossing into "pointer away" is rejected when the
+  layout is stale or degenerate (zero screen sizes, screens that only touch at
+  a corner, cursor outside the real overlap span), so the cursor can no longer
+  get stuck on an arrangement that doesn't exist.
+
+### Added
+- **Build artifacts CI workflow** — every push/pull request touching code or
+  packaging builds the macOS `.dmg` and Windows `.exe` installer and uploads
+  them as downloadable workflow artifacts (no tag or release needed).
+
 ## [0.6.0] - 2026-08-29
 
 First stable release under the ShareCursor name.
