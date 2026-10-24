@@ -1,8 +1,8 @@
-/// Screen-edge detection for automatic control hand-off.
-///
-/// When the server cursor reaches an edge that has a neighbour in the monitor
-/// manager layout, control is handed to that neighbour — the seamless
-/// "just push the mouse to the other screen" behaviour, no hotkey needed.
+//! Screen-edge detection for automatic control hand-off.
+//!
+//! When the server cursor reaches an edge that has a neighbour in the monitor
+//! manager layout, control is handed to that neighbour — the seamless
+//! "just push the mouse to the other screen" behaviour, no hotkey needed.
 
 use sharecursor_protocol::Edge;
 
@@ -221,7 +221,35 @@ mod tests {
 
     #[test]
     fn invalid_layout_never_counts_as_crossing() {
+        // Unknown/zero peer screen size (stale layout) must not open the edge.
         assert!(!crossing_allowed((1920, 1080), (0, 0), Edge::Right, 900, 0));
-        assert!(!crossing_allowed((1920, 1080), (1920, 1080), Edge::Right, 2000, 0));
+        // Zero local screen size must not open the edge either.
+        assert!(!crossing_allowed((0, 0), (1920, 1080), Edge::Right, 0, 0));
+        // Screens that merely touch at a corner (degenerate span) are a wall:
+        // the span below collapses to (0, 0), which the naive in_span check
+        // would still let through at perp == 0.
+        assert!(!crossing_allowed(
+            (1920, 1080),
+            (1920, 1080),
+            Edge::Right,
+            0,
+            -1080
+        ));
+        // Outside the overlap span is a wall.
+        assert!(!crossing_allowed(
+            (1920, 1080),
+            (1920, 1080),
+            Edge::Right,
+            2000,
+            0
+        ));
+        // A genuine overlap still allows the hand-off.
+        assert!(crossing_allowed(
+            (1920, 1080),
+            (1920, 1080),
+            Edge::Right,
+            500,
+            0
+        ));
     }
 }
