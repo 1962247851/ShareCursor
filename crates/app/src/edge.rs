@@ -1,8 +1,8 @@
-//! Screen-edge detection for automatic control hand-off.
-//!
-//! When the server cursor reaches an edge that has a neighbour in the monitor
-//! manager layout, control is handed to that neighbour — the seamless
-//! "just push the mouse to the other screen" behaviour, no hotkey needed.
+/// Screen-edge detection for automatic control hand-off.
+///
+/// When the server cursor reaches an edge that has a neighbour in the monitor
+/// manager layout, control is handed to that neighbour — the seamless
+/// "just push the mouse to the other screen" behaviour, no hotkey needed.
 
 use sharecursor_protocol::Edge;
 
@@ -126,6 +126,29 @@ pub fn in_span(along: i32, span: (i32, i32)) -> bool {
     along >= span.0 && along <= span.1
 }
 
+/// Reject edge transitions when the screens do not actually overlap in the
+/// current arrangement. This is a safety check for the mouse-freeze bug: a
+/// configured edge is only a hand-off candidate if the overlap span is valid and
+/// the cursor sits within it. Without this guard, stale or partially configured
+/// layout data can leave the app stuck in the "my pointer is away" state.
+pub fn crossing_allowed(
+    local_screen: (u32, u32),
+    peer_screen: (u32, u32),
+    edge: Edge,
+    perp: i32,
+    offset: i32,
+) -> bool {
+    let (this_dim, other_dim) = match edge {
+        Edge::Left | Edge::Right => (local_screen.1 as i32, peer_screen.1 as i32),
+        Edge::Top | Edge::Bottom => (local_screen.0 as i32, peer_screen.0 as i32),
+    };
+    if this_dim <= 0 || other_dim <= 0 {
+        return false;
+    }
+    let span = overlap_span(this_dim, offset, other_dim);
+    span.1 > span.0 && in_span(perp, span)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,5 +217,11 @@ mod tests {
         let cfg = EdgeConfig::none();
         assert_eq!(cfg.hit(0, 0), None);
         assert_eq!(cfg.hit(-5, -5), None);
+    }
+
+    #[test]
+    fn invalid_layout_never_counts_as_crossing() {
+        assert!(!crossing_allowed((1920, 1080), (0, 0), Edge::Right, 900, 0));
+        assert!(!crossing_allowed((1920, 1080), (1920, 1080), Edge::Right, 2000, 0));
     }
 }
