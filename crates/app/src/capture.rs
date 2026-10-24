@@ -251,14 +251,13 @@ pub fn run(
                             tracing::info!(?edge, perp, "visiting pointer crossed home");
                         }
                     } else {
-                        // My pointer leaves — only where the two screens overlap.
+                        // My pointer leaves — only where the two screens genuinely
+                        // overlap. `crossing_allowed` also rejects stale/partial
+                        // layout data (zero screen sizes, degenerate overlap
+                        // spans) so the cursor can never get stuck "away" on an
+                        // arrangement that doesn't exist.
                         let peer = *peer_screen.lock().unwrap();
-                        let (this_dim, other_dim) = match edge {
-                            Edge::Left | Edge::Right => (screen.1 as i32, peer.1 as i32),
-                            Edge::Top | Edge::Bottom => (screen.0 as i32, peer.0 as i32),
-                        };
-                        let span = crate::edge::overlap_span(this_dim, offset, other_dim);
-                        if crate::edge::in_span(perp, span) {
+                        if crate::edge::crossing_allowed(screen, peer, edge, perp, offset) {
                             *control.entry.lock().unwrap() = Some((edge, perp));
                             control.my_away.store(true, Ordering::Relaxed);
                             tracing::info!(?edge, perp, "my pointer crossed to the peer");
